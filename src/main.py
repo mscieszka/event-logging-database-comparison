@@ -1,10 +1,9 @@
 import mariadb
 import os
-# import time
-# import random
+import random
 # import matplotlib.pyplot as plt
 from typing import Optional, Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from influxdb_client import InfluxDBClient, Point
@@ -58,7 +57,7 @@ class InfluxDBManager:
         self.client = self.get_influxdb_client()
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         self.bucket = os.getenv('INFLUXDB_BUCKET')
-        # self.org: str = os.environ['INFLUXDB_ORG'],
+        self.delete_api = self.client.delete_api()
 
     def write_event(self, event: Event) -> bool:
         try:
@@ -166,3 +165,156 @@ async def get_events(
 
     events = influxdb.query_events(start_time, end_time, filters)
     return {"events": events}
+
+# Sample data for event generation
+SAMPLE_DATA = {
+    "severities": [
+        {"name": "INFO", "description": "Informational message"},
+        {"name": "WARNING", "description": "Warning condition"},
+        {"name": "ERROR", "description": "Error condition"},
+        {"name": "CRITICAL", "description": "Critical condition"}
+    ],
+    "event_types": [
+        {"name": "SYSTEM_STATUS", "description": "System status update"},
+        {"name": "SECURITY_ALERT", "description": "Security-related event"},
+        {"name": "PERFORMANCE", "description": "Performance metric event"},
+        {"name": "USER_ACTION", "description": "User-initiated action"},
+    ],
+    "sources": [
+        {
+            "name": "web-server-01",
+            "ip_address": "192.168.1.100",
+            "location": {"name": "PL-01", "country": "Poland", "city": "Katowice"}
+        },
+        {
+            "name": "web-server-02",
+            "ip_address": "192.168.1.200",
+            "location": {"name": "PL-02", "country": "Poland", "city": "Gdansk"}
+        },
+        {
+            "name": "cache-01",
+            "ip_address": "192.168.2.100",
+            "location": {"name": "US-01", "country": "USA", "city": "New York"}
+        },
+        {
+            "name": "lb-01",
+            "ip_address": "192.168.3.100",
+            "location": {"name": "DE-01", "country": "Germany", "city": "Frankfurt"}
+        }
+    ],
+    "messages": {
+        "SYSTEM_STATUS": [
+            "System startup completed",
+            "System shutdown initiated",
+            "Service restart required",
+            "Memory usage at {}%",
+            "CPU utilization peaked at {}%"
+        ],
+        "SECURITY_ALERT": [
+            "Failed login attempt from IP {}",
+            "Suspicious activity detected",
+            "Firewall rule updated",
+            "New security patch applied",
+            "User account locked after {} attempts"
+        ],
+        "PERFORMANCE": [
+            "Response time exceeded {}ms",
+            "Database query took {}ms",
+            "Network latency increased to {}ms",
+            "Queue size reached {}"
+        ],
+        "USER_ACTION": [
+            "User {} logged in successfully",
+            "Password change attempted",
+            "Configuration updated by admin",
+            "New user account created"
+        ],
+    }
+}
+
+def generate_random_event(reference_time: Optional[datetime] = None) -> Event:
+    if reference_time is None:
+        reference_time = datetime.now()
+
+    # Add time variation (±12 hours)
+    time_variation = timedelta(hours=random.uniform(-12, 12))
+    timestamp = reference_time + time_variation
+
+    # Select event components
+    severity = random.choice(SAMPLE_DATA["severities"])
+    event_type = random.choice(SAMPLE_DATA["event_types"])
+    source = random.choice(SAMPLE_DATA["sources"])
+
+    # Generate message with random parameters
+    message_template = random.choice(SAMPLE_DATA["messages"][event_type["name"]])
+    message = message_template.format(
+        *[random.randint(1, 100) for _ in range(message_template.count("{}"))]
+    )
+
+    return Event(
+        timestamp=timestamp,
+        message=message,
+        severity=Severity(**severity),
+        event_type=EventType(**event_type),
+        source=Source(**source)
+    )
+
+@app.post("/generate-events/")
+async def generate_events(
+        events_to_generate: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+):
+    """
+    Generate and store random events.
+    """
+    if start_time is None:
+        start_time = datetime.now() - timedelta(days=3)
+    if end_time is None:
+        end_time = datetime.now()
+
+    generated_events = []
+    for _ in range(events_to_generate):
+        # Generate reference time within the specified range
+        reference_time = start_time + (end_time - start_time) * random.random()
+        event = generate_random_event(reference_time)
+
+        # Store event in InfluxDB
+        success = influxdb.write_event(event)
+        if success:
+            generated_events.append({
+                "timestamp": event.timestamp,
+                "message": event.message,
+                "severity": event.severity.name,
+                "event_type": event.event_type.name,
+                "source": event.source.name
+            })
+
+    return {
+        "message": f"Generated {len(generated_events)} events",
+        "events": generated_events
+    }
+
+@app.post("/clear-events/")
+async def clear_events(
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None
+):
+    """
+    Clear events from the InfluxDB bucket within the given time range.
+    """
+    if start_time is None:
+        start_time = datetime.now() - timedelta(days=10)
+    if end_time is None:
+        end_time = datetime.now()
+    try:
+        influxdb.delete_api.delete(
+            start=start_time,
+            stop=end_time,
+            bucket=influxdb.bucket,
+            org=influxdb.client.org,
+            predicate='_measurement="events"'
+        )
+        return {"message": "Events cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing events: {e}")
