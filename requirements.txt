@@ -3,3 +3,6 @@ influxdb-client
 fastapi
 uvicorn
 matplotlib
+typing
+datetime
+pydantic
