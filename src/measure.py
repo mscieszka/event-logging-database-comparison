@@ -39,6 +39,7 @@ def measure_update_delete():
     global span, url, response, __, response_data, run_time_milliseconds, file
     data_update = []
     data_delete = []
+    data_get_all = []
     data_get_severity = []
     for span in spans:
         # Create span-1 events.
@@ -48,6 +49,7 @@ def measure_update_delete():
             print(f"Failed with status code {response.status_code}: {response.text}")
 
         runs_time_update = 0
+        runs_time_get_all = 0
         runs_time_get_severity = 0
         for __ in range(runs):
             # Add one event with custom data.
@@ -80,12 +82,17 @@ def measure_update_delete():
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
 
+            # Find all events
+            url = f"{host}/influxdb/events?end_time=2025-01-18T10:00:00Z&start_time=2023-01-01T10:00:00Z"
+            response = requests.get(url=url)
+            if response.status_code != 200:
+                print(f"Failed with status code {response.status_code}: {response.text}")
+            response_data = response.json()
+            runs_time_get_all += response_data.get("total_milliseconds")
+
             # Find all events with a given severity
             url = f"{host}/influxdb/events?end_time=2025-01-18T10:00:00Z&start_time=2023-01-01T10:00:00Z&severity=INFO"
-            response = requests.get(
-                url=url,
-                json=event_data
-            )
+            response = requests.get(url=url)
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
             response_data = response.json()
@@ -120,6 +127,9 @@ def measure_update_delete():
         average_span_time_update = runs_time_update / runs
         data_update.append({"span": span, "duration": average_span_time_update})
 
+        average_span_time_get_all = runs_time_get_all / runs
+        data_get_all.append({"span": span, "duration": average_span_time_get_all})
+
         average_span_time_get_severity = runs_time_get_severity / runs
         data_get_severity.append({"span": span, "duration": average_span_time_get_severity})
 
@@ -134,6 +144,8 @@ def measure_update_delete():
 
     with open("span_duration_data_update.json", "w") as file:
         file.write(json.dumps(data_update))
+    with open("span_duration_data_get_all.json", "w") as file:
+        file.write(json.dumps(data_get_all))
     with open("span_duration_data_get_severity.json", "w") as file:
         file.write(json.dumps(data_get_severity))
     with open("span_duration_data_delete.json", "w") as file:
@@ -144,4 +156,4 @@ def measure_update_delete():
 measure_update_delete()
 
 # SELECT eventu z wybranego kraju
-# GET wszystkich
+# delete move to create + measure
