@@ -9,12 +9,14 @@ runs = 3
 # spans = [1, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 spans = [1, 10, 50]
 
-def measure_create():
+def measure_create_delete():
     global url, span, __, response, response_data, run_time_milliseconds, file
     url = f"{host}/influxdb/events"
     data_create = []
+    data_delete = []
     for span in spans:
-        all_runs_time = 0
+        create_runs_time = 0
+        delete_runs_time = 0
         events_json_influx = []
         for _ in range(span):
             events_json_influx.append(Utilities.get_random_event_json())
@@ -28,17 +30,31 @@ def measure_create():
                 print(f"Failed with status code {response.status_code}: {response.text}")
             response_data = response.json()
             run_time_milliseconds = response_data.get("total_milliseconds")
-            all_runs_time += run_time_milliseconds
+            create_runs_time += run_time_milliseconds
 
-        average_span_time = all_runs_time / runs
-        data_create.append({"span": span, "duration": average_span_time})
+            # Clear generated events
+            url = f"{host}/influxdb/clear-events"
+            response = requests.post(url)
+            if response.status_code != 200:
+                print(f"Failed with status code {response.status_code}: {response.text}")
+            response_data = response.json()
+            delete_runs_time += response_data.get("total_milliseconds")
+
+        create_average_span_time = create_runs_time / runs
+        data_create.append({"span": span, "duration": create_average_span_time})
+
+        delete_average_span_time = delete_runs_time / runs
+        data_delete.append({"span": span, "duration": delete_average_span_time})
+
+
     with open("span_duration_data_create.json", "w") as file:
         file.write(json.dumps(data_create))
+    with open("span_duration_data_delete.json", "w") as file:
+        file.write(json.dumps(data_delete))
 
-def measure_update_delete():
+def measure_update_get():
     global span, url, response, __, response_data, run_time_milliseconds, file
     data_update = []
-    data_delete = []
     data_get_all = []
     data_get_severity = []
     for span in spans:
@@ -138,9 +154,6 @@ def measure_update_delete():
         response = requests.post(url)
         if response.status_code != 200:
             print(f"Failed with status code {response.status_code}: {response.text}")
-        response_data = response.json()
-        time_delete = response_data.get("total_milliseconds")
-        data_delete.append({"span": span, "duration": time_delete})
 
     with open("span_duration_data_update.json", "w") as file:
         file.write(json.dumps(data_update))
@@ -148,12 +161,6 @@ def measure_update_delete():
         file.write(json.dumps(data_get_all))
     with open("span_duration_data_get_severity.json", "w") as file:
         file.write(json.dumps(data_get_severity))
-    with open("span_duration_data_delete.json", "w") as file:
-        file.write(json.dumps(data_delete))
 
-
-# measure_create()
-measure_update_delete()
-
-# SELECT eventu z wybranego kraju
-# delete move to create + measure
+measure_create_delete()
+# measure_update_get()
