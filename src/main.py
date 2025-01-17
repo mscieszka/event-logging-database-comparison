@@ -1,11 +1,11 @@
 import mariadb
+import random
 import os
-# import matplotlib.pyplot as plt
-from typing import Optional, Dict, List
+from typing import Optional, List
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from influx.manager import InfluxDBManager
-from influx.models import Event, UpdateEventSeverity
+from influx.models import Event, UpdateEventSeverity, SAMPLE_DATA, Severity, EventType, Source
 
 def get_mariadb_connection():
     try:
@@ -26,17 +26,25 @@ influxdb = InfluxDBManager()
 
 @app.post("/influxdb/event/")
 async def create_event(event: Event):
+    timestamp_start = datetime.now()
     success = influxdb.write_event(event)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to write event to database")
-    return {"message": "Event logged successfully"}
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+
+    return {"total_milliseconds": total_milliseconds, "message": "Event logged successfully"}
 
 @app.post("/influxdb/events/")
 async def create_event(events: List[Event]):
+    timestamp_start = datetime.now()
     success = influxdb.write_events_batch(events)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to write events to database")
-    return {"message": "Events logged successfully"}
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+
+    return {"total_milliseconds": total_milliseconds, "message": "Events logged successfully"}
 
 @app.get("/influxdb/events/")
 async def get_events(
@@ -60,8 +68,12 @@ async def get_events(
     if city:
         filters["location_city"] = city
 
+    timestamp_start = datetime.now()
     events = influxdb.query_events(start_time, end_time, filters)
-    return {"events": events}
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+
+    return {"total_milliseconds": total_milliseconds, "events": events}
 
 @app.post("/influxdb/clear-events/")
 async def clear_events_influxdb(
@@ -76,6 +88,7 @@ async def clear_events_influxdb(
     if end_time is None:
         end_time = datetime.now() + timedelta(days=1)
     try:
+        timestamp_start = datetime.now()
         influxdb.delete_api.delete(
             start=start_time,
             stop=end_time,
@@ -83,12 +96,16 @@ async def clear_events_influxdb(
             org=influxdb.client.org,
             predicate='_measurement="events"'
         )
-        return {"message": "Events cleared successfully"}
+        timestamp_end = datetime.now()
+        total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+
+        return {"total_milliseconds": total_milliseconds, "message": "Events cleared successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error clearing events: {e}")
 
 @app.put("/influxdb/event/severity")
 async def update_event_severity(request: UpdateEventSeverity):
+    timestamp_start = datetime.now()
     success = influxdb.update_event_severity(
         timestamp=request.timestamp,
         old_severity=request.old_severity,
@@ -101,5 +118,71 @@ async def update_event_severity(request: UpdateEventSeverity):
             status_code=404,
             detail="Event not found or failed to update severity"
         )
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
 
-    return {"message": "Event severity updated successfully"}
+    return {"total_milliseconds": total_milliseconds, "message": f"Event severity updated successfully."}
+
+
+@app.post("/generate-events/")
+async def generate_events(
+        events_to_generate: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+):
+    """
+    Generate and store random events.
+    """
+    if start_time is None:
+        start_time = datetime.now() - timedelta(days=30)
+    if end_time is None:
+        end_time = datetime.now()
+
+    generated_events = []
+    for _ in range(events_to_generate):
+        # Generate reference time within the specified range
+        reference_time = start_time + (end_time - start_time) * random.random()
+        event = generate_random_event(reference_time)
+
+        # Store event in InfluxDB
+        success = influxdb.write_event(event)
+        if success:
+            generated_events.append({
+                "timestamp": event.timestamp,
+                "message": event.message,
+                "severity": event.severity.name,
+                "event_type": event.event_type.name,
+                "source": event.source.name
+            })
+
+    return {
+        "message": f"Generated {len(generated_events)} events",
+        # "events": generated_events
+    }
+
+def generate_random_event(reference_time: Optional[datetime] = None) -> Event:
+    if reference_time is None:
+        reference_time = datetime.now()
+
+    # Add time variation (±12 hours)
+    time_variation = timedelta(hours=random.uniform(-12, 12))
+    timestamp = reference_time + time_variation
+
+    # Select event components
+    severity = random.choice(SAMPLE_DATA["severities"])
+    event_type = random.choice(SAMPLE_DATA["event_types"])
+    source = random.choice(SAMPLE_DATA["sources"])
+
+    # Generate message with random parameters
+    message_template = random.choice(SAMPLE_DATA["messages"][event_type["name"]])
+    message = message_template.format(
+        *[random.randint(1, 100) for _ in range(message_template.count("{}"))]
+    )
+
+    return Event(
+        timestamp=timestamp,
+        message=message,
+        severity=Severity(**severity),
+        event_type=EventType(**event_type),
+        source=Source(**source)
+    )

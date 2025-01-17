@@ -1,8 +1,10 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
+
 from src.influx.models import Event
 
 class InfluxDBManager:
@@ -50,16 +52,17 @@ class InfluxDBManager:
             print(f"Error writing to InfluxDB: {e}")
             return False
 
-    def create_event_point(self, event):
-        return Point("events") \
-            .time(event.timestamp) \
-            .tag("severity", event.severity.name) \
-            .tag("event_type", event.event_type.name) \
-            .tag("source_name", event.source.name) \
-            .tag("source_ip", event.source.ip_address) \
-            .tag("location_country", event.source.location.country) \
-            .tag("location_city", event.source.location.city) \
-            .field("message", event.message)
+    def create_event_point(self, event: Event):
+        point = Point("events").time(event.timestamp)
+        point.tag("severity", event.severity.name)
+        point.tag("event_type", event.event_type.name)
+        point.tag("source_name", event.source.name)
+        point.tag("source_ip", event.source.ip_address)
+        point.tag("location_country", event.source.location.country)
+        point.tag("location_city", event.source.location.city)
+        point.field("message", event.message)
+
+        return point
 
     def query_events(
             self,
