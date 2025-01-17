@@ -6,8 +6,7 @@ from influx.models import Utilities
 host = "http://localhost:8000"
 runs = 3
 # spans = [1, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000]
-spans = [1, 10, 50]
-
+spans = [1, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 
 def measure_create():
     global url, span, __, response, response_data, run_time_milliseconds, file
@@ -46,41 +45,40 @@ def measure_update_delete():
         if response.status_code != 200:
             print(f"Failed with status code {response.status_code}: {response.text}")
 
-        # Add one event with custom data.
-        url = f"{host}/influxdb/event"
-        event_data = {
-            "timestamp": "2025-01-15T10:00:00Z",
-            "message": "System startup completed",
-            "severity": {
-                "name": "INFO",
-                "description": "Informational message"
-            },
-            "event_type": {
-                "name": "SYSTEM_STATUS",
-                "description": "System status update"
-            },
-            "source": {
-                "name": "web-server-01",
-                "ip_address": "192.168.1.100",
-                "location": {
-                    "name": "DC-North",
-                    "country": "USA",
-                    "city": "Chicago"
+        runs_time_update = 0
+        for __ in range(runs):
+            # Add one event with custom data.
+            url = f"{host}/influxdb/event"
+            event_data = {
+                "timestamp": "2025-01-15T10:00:00Z",
+                "message": "System startup completed",
+                "severity": {
+                    "name": "INFO",
+                    "description": "Informational message"
+                },
+                "event_type": {
+                    "name": "SYSTEM_STATUS",
+                    "description": "System status update"
+                },
+                "source": {
+                    "name": "web-server-01",
+                    "ip_address": "192.168.1.100",
+                    "location": {
+                        "name": "DC-North",
+                        "country": "USA",
+                        "city": "Chicago"
+                    }
                 }
             }
-        }
-        response = requests.post(
-            url=url,
-            json=event_data
-        )
-        if response.status_code != 200:
-            print(f"Failed with status code {response.status_code}: {response.text}")
+            response = requests.post(
+                url=url,
+                json=event_data
+            )
+            if response.status_code != 200:
+                print(f"Failed with status code {response.status_code}: {response.text}")
 
-        time.sleep(0.5)
-        runs_time_update = 0
-        runs_time_delete = 0
-        for __ in range(runs):
             # Update one event
+            time.sleep(0.5)
             url = f"{host}/influxdb/event/severity"
             event_update_data = {
                 "timestamp": "2025-01-15T10:00:00Z",
@@ -99,18 +97,24 @@ def measure_update_delete():
             run_time_milliseconds = response_data.get("total_milliseconds")
             runs_time_update += run_time_milliseconds
 
-            # Clear generated events
-            url = f"{host}/influxdb/clear-events"
+            # Remove custom event
+            url = f"{host}/influxdb/clear-events?start_time=2025-01-15T10:00:00Z&end_time=2025-01-15T10:00:00Z"
             response = requests.post(url)
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
-            response_data = response.json()
-            run_time_milliseconds = response_data.get("total_milliseconds")
-            runs_time_delete += run_time_milliseconds
+
         average_span_time_update = runs_time_update / runs
-        average_span_time_delete = runs_time_delete / runs
         data_update.append({"span": span, "duration": average_span_time_update})
-        data_delete.append({"span": span, "duration": average_span_time_delete})
+
+        # Clear generated events
+        url = f"{host}/influxdb/clear-events"
+        response = requests.post(url)
+        if response.status_code != 200:
+            print(f"Failed with status code {response.status_code}: {response.text}")
+        response_data = response.json()
+        time_delete = response_data.get("total_milliseconds")
+        data_delete.append({"span": span, "duration": time_delete})
+
     with open("span_duration_data_update.json", "w") as file:
         file.write(json.dumps(data_update))
     with open("span_duration_data_delete.json", "w") as file:
