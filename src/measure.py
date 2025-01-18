@@ -10,7 +10,7 @@ spans = [1, 10]
 
 def measure_create_delete():
     global spans, runs
-    url = f"{host}/influxdb/events"
+
     data_create = []
     data_delete = []
     for span in spans:
@@ -21,7 +21,7 @@ def measure_create_delete():
             events_json_influx.append(Utilities.get_random_event_json())
         for __ in range(runs):
             response = requests.post(
-                url=url,
+                url=f"{host}/influxdb/events",
                 json=events_json_influx,
                 headers={"Content-Type": "application/json"}
             )
@@ -92,12 +92,10 @@ def measure_update_get():
                     }
                 }
             }
-            response = requests.post(
-                url=url,
-                json=event_data
-            )
+            response = requests.post(url=url,json=event_data)
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
+            time.sleep(0.5)
 
             # Find all events
             url = f"{host}/influxdb/events?end_time=2025-01-18T10:00:00Z&start_time=2023-01-01T10:00:00Z"
@@ -124,7 +122,6 @@ def measure_update_get():
             runs_time_get_country += response_data.get("total_milliseconds")
 
             # Update one event
-            time.sleep(0.5)
             url = f"{host}/influxdb/event/severity"
             event_update_data = {
                 "timestamp": "2025-01-15T10:00:00Z",
@@ -176,5 +173,5 @@ def measure_update_get():
     with open("span_duration_data_get_country.json", "w") as file:
         file.write(json.dumps(data_get_country))
 
-# measure_create_delete()
-measure_update_get()
+measure_create_delete()
+# measure_update_get()
