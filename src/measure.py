@@ -6,8 +6,7 @@ from influx.models import Utilities
 host = "http://localhost:8000"
 runs = 3
 # spans = [1, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000]
-# spans = [1, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]
-spans = [1, 10, 50]
+spans = [1, 10]
 
 def measure_create_delete():
     global url, span, __, response, response_data, run_time_milliseconds, file
@@ -34,7 +33,7 @@ def measure_create_delete():
 
             # Clear generated events
             url = f"{host}/influxdb/clear-events"
-            response = requests.post(url)
+            response = requests.delete(url)
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
             response_data = response.json()
@@ -136,7 +135,7 @@ def measure_update_get():
 
             # Remove custom event
             url = f"{host}/influxdb/clear-events?start_time=2025-01-15T10:00:00Z&end_time=2025-01-15T10:00:00Z"
-            response = requests.post(url)
+            response = requests.delete(url)
             if response.status_code != 200:
                 print(f"Failed with status code {response.status_code}: {response.text}")
 
@@ -151,7 +150,7 @@ def measure_update_get():
 
         # Clear generated events
         url = f"{host}/influxdb/clear-events"
-        response = requests.post(url)
+        response = requests.delete(url)
         if response.status_code != 200:
             print(f"Failed with status code {response.status_code}: {response.text}")
 
@@ -163,4 +162,4 @@ def measure_update_get():
         file.write(json.dumps(data_get_severity))
 
 measure_create_delete()
-# measure_update_get()
+measure_update_get()

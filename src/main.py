@@ -28,10 +28,10 @@ influxdb = InfluxDBManager()
 async def create_event(event: Event):
     timestamp_start = datetime.now()
     success = influxdb.write_event(event)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to write event to database")
     timestamp_end = datetime.now()
     total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to write event to database")
 
     return {"total_milliseconds": total_milliseconds, "message": "Event logged successfully"}
 
@@ -39,10 +39,10 @@ async def create_event(event: Event):
 async def create_event(events: List[Event]):
     timestamp_start = datetime.now()
     success = influxdb.write_events_batch(events)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to write events to database")
     timestamp_end = datetime.now()
     total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to write events to database")
 
     return {"total_milliseconds": total_milliseconds, "message": "Events logged successfully"}
 
@@ -75,7 +75,7 @@ async def get_events(
 
     return {"total_milliseconds": total_milliseconds, "events": events}
 
-@app.post("/influxdb/clear-events/")
+@app.delete("/influxdb/clear-events/")
 async def clear_events_influxdb(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None
@@ -113,13 +113,13 @@ async def update_event_severity(request: UpdateEventSeverity):
         event_type=request.event_type,
         source_name=request.source_name
     )
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
     if not success:
         raise HTTPException(
             status_code=404,
             detail="Event not found or failed to update severity"
         )
-    timestamp_end = datetime.now()
-    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
 
     return {"total_milliseconds": total_milliseconds, "message": f"Event severity updated successfully."}
 
@@ -138,27 +138,22 @@ async def generate_events(
     if end_time is None:
         end_time = datetime.now()
 
-    generated_events = []
+    events = []
     for _ in range(events_to_generate):
         # Generate reference time within the specified range
         reference_time = start_time + (end_time - start_time) * random.random()
-        event = generate_random_event(reference_time)
 
-        # Store event in InfluxDB
-        success = influxdb.write_event(event)
-        if success:
-            generated_events.append({
-                "timestamp": event.timestamp,
-                "message": event.message,
-                "severity": event.severity.name,
-                "event_type": event.event_type.name,
-                "source": event.source.name
-            })
+        # Get events data
+        events.append(generate_random_event(reference_time))
 
-    return {
-        "message": f"Generated {len(generated_events)} events",
-        # "events": generated_events
-    }
+    timestamp_start = datetime.now()
+    success = influxdb.write_events_batch(events)
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to write events to database")
+
+    return {"total_milliseconds": total_milliseconds, "message": f"Generated events successfully.",}
 
 def generate_random_event(reference_time: Optional[datetime] = None) -> Event:
     if reference_time is None:
