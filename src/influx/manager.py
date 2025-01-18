@@ -1,9 +1,9 @@
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from fastapi import HTTPException
 from typing import List, Dict, Optional
 from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 from src.influx.models import Event
 
@@ -153,3 +153,63 @@ class InfluxDBManager:
         except Exception as e:
             print(f"Error updating event severity in InfluxDB: {e}")
             return False
+
+    def query_events_by_country(
+            self,
+            country: str,
+            start_time: datetime,
+            end_time: datetime,
+            additional_filters: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Query events from InfluxDB for a specific country with optional additional filters
+        """
+        # Properly format timestamps for InfluxDB
+        start_str = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_str = end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Base query with country filter
+        query = f'''
+        from(bucket: "{self.bucket}")
+          |> range(start: {start_str}, stop: {end_str})
+          |> filter(fn: (r) => r._measurement == "events")
+          |> filter(fn: (r) => r.location_country == "{country}")
+        '''
+
+        # Add any additional filters
+        if additional_filters:
+            for key, value in additional_filters.items():
+                if key != "location_country":  # Avoid duplicate country filter
+                    query += f'  |> filter(fn: (r) => r.{key} == "{value}")\n'
+
+        try:
+            query_api = self.client.query_api()
+            result = query_api.query(org=self.client.org, query=query)
+
+            events = []
+            for table in result:
+                for record in table.records:
+                    event = {
+                        "timestamp": record.get_time(),
+                        "message": record.get_value(),
+                        "severity": record.values.get("severity"),
+                        "event_type": record.values.get("event_type"),
+                        "source": {
+                            "name": record.values.get("source_name"),
+                            "ip_address": record.values.get("source_ip"),
+                            "location": {
+                                "city": record.values.get("location_city"),
+                                "country": record.values.get("location_country"),
+                                "name": record.values.get("location_name")
+                            }
+                        }
+                    }
+                    events.append(event)
+
+            return events
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error querying InfluxDB: {str(e)}"
+            )

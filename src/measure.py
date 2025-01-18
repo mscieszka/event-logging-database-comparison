@@ -9,7 +9,7 @@ runs = 3
 spans = [1, 10]
 
 def measure_create_delete():
-    global url, span, __, response, response_data, run_time_milliseconds, file
+    global spans, runs
     url = f"{host}/influxdb/events"
     data_create = []
     data_delete = []
@@ -52,10 +52,11 @@ def measure_create_delete():
         file.write(json.dumps(data_delete))
 
 def measure_update_get():
-    global span, url, response, __, response_data, run_time_milliseconds, file
+    global spans, runs
     data_update = []
     data_get_all = []
     data_get_severity = []
+    data_get_country = []
     for span in spans:
         # Create span-1 events.
         url = f"{host}/generate-events?events_to_generate={span - 1}"
@@ -66,7 +67,8 @@ def measure_update_get():
         runs_time_update = 0
         runs_time_get_all = 0
         runs_time_get_severity = 0
-        for __ in range(runs):
+        runs_time_get_country = 0
+        for _ in range(runs):
             # Add one event with custom data.
             url = f"{host}/influxdb/event"
             event_data = {
@@ -113,6 +115,14 @@ def measure_update_get():
             response_data = response.json()
             runs_time_get_severity += response_data.get("total_milliseconds")
 
+            # Find all events from a given country
+            url = f"{host}/events/USA"
+            response = requests.get(url=url)
+            if response.status_code != 200:
+                print(f"Failed with status code {response.status_code}: {response.text}")
+            response_data = response.json()
+            runs_time_get_country += response_data.get("total_milliseconds")
+
             # Update one event
             time.sleep(0.5)
             url = f"{host}/influxdb/event/severity"
@@ -148,6 +158,9 @@ def measure_update_get():
         average_span_time_get_severity = runs_time_get_severity / runs
         data_get_severity.append({"span": span, "duration": average_span_time_get_severity})
 
+        average_span_time_get_country = runs_time_get_country / runs
+        data_get_country.append({"span": span, "duration": average_span_time_get_country})
+
         # Clear generated events
         url = f"{host}/influxdb/clear-events"
         response = requests.delete(url)
@@ -160,6 +173,8 @@ def measure_update_get():
         file.write(json.dumps(data_get_all))
     with open("span_duration_data_get_severity.json", "w") as file:
         file.write(json.dumps(data_get_severity))
+    with open("span_duration_data_get_country.json", "w") as file:
+        file.write(json.dumps(data_get_country))
 
-measure_create_delete()
+# measure_create_delete()
 measure_update_get()

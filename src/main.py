@@ -181,3 +181,37 @@ def generate_random_event(reference_time: Optional[datetime] = None) -> Event:
         event_type=EventType(**event_type),
         source=Source(**source)
     )
+
+@app.get("/events/{country}")
+async def get_events_by_country(
+        country: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        severity: Optional[str] = None,
+        event_type: Optional[str] = None,
+        source_name: Optional[str] = None
+):
+    if start_time is None:
+        start_time = datetime.now() - timedelta(days=365)
+    if end_time is None:
+        end_time = datetime.now()
+
+    additional_filters = {}
+    if severity:
+        additional_filters["severity"] = severity
+    if event_type:
+        additional_filters["event_type"] = event_type
+    if source_name:
+        additional_filters["source_name"] = source_name
+
+    timestamp_start = datetime.now()
+    events = influxdb.query_events_by_country(
+        country=country,
+        start_time=start_time,
+        end_time=end_time,
+        additional_filters=additional_filters
+    )
+    timestamp_end = datetime.now()
+    total_milliseconds = int(timestamp_end.timestamp() * 1000) - int(timestamp_start.timestamp() * 1000)
+
+    return {"total_milliseconds": total_milliseconds, "event_count": len(events), "events": events}
